@@ -4,60 +4,95 @@ import numpy as np
 from face.embedding import generate_embedding
 from db.store_embedding import fetch_all_embeddings
 
-THRESHOLD = 0.70  # cosine similarity
-REQUIRED_STABLE = 40  # ~1.5 seconds
+# ---------------- CONFIG ----------------
+THRESHOLD = 0.78
+REQUIRED_STABLE = 25          # frames to stabilize face
+MATCH_FRAMES = 3              # embeddings to average
+DETECT_EVERY_N_FRAMES = 5
+RESIZE_SCALE = 0.5
+# ---------------------------------------
+
+print("🔥 CHECKIN FILE LOADED 🔥", flush=True)
 
 
 def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
 def checkin():
-    # Load all registered users
+    # ---------- LOAD USERS ----------
     users = fetch_all_embeddings()
-
     if not users:
-        print("❌ No registered users found")
+        print("❌ No registered users found", flush=True)
         return
 
-    print(f"🟢 Loaded {len(users)} registered users")
+    print(f"🟢 Loaded {len(users)} registered users", flush=True)
 
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    # ---------- CAMERA ----------
+    cap = cv2.VideoCapture(0)  # DO NOT use CAP_DSHOW
+    if not cap.isOpened():
+        print("❌ Camera not opened", flush=True)
+        return
+
+    print("📸 Camera opened", flush=True)
+
+    cv2.namedWindow("AeroFace - Lounge Check-In", cv2.WINDOW_NORMAL)
 
     face_cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     )
 
-    cv2.namedWindow("AeroFace - Lounge Check-In", cv2.WINDOW_NORMAL)
-
-    print("🟢 Look at the camera for check-in")
-
     stable_frames = 0
+    scores_buffer = []
     last_face = None
+    last_bbox = None
+    frame_count = 0
 
+    # ---------- MAIN LOOP ----------
     while True:
         ret, frame = cap.read()
         if not ret:
+            print("❌ Failed to read frame", flush=True)
             break
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frame_count += 1
 
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.2,
-            minNeighbors=5,
-            minSize=(100, 100)
-        )
+        # Resize for speed
+        small = cv2.resize(frame, None, fx=RESIZE_SCALE, fy=RESIZE_SCALE)
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+        faces = []
+
+        if frame_count % DETECT_EVERY_N_FRAMES == 0 or last_bbox is None:
+            faces = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.2,
+                minNeighbors=6,
+                minSize=(80, 80)
+            )
+            if len(faces) == 1:
+                last_bbox = faces[0]
+        else:
+            faces = [last_bbox] if last_bbox is not None else []
 
         if len(faces) == 1:
             stable_frames += 1
             x, y, w, h = faces[0]
+
+            # Scale bbox back
+            x = int(x / RESIZE_SCALE)
+            y = int(y / RESIZE_SCALE)
+            w = int(w / RESIZE_SCALE)
+            h = int(h / RESIZE_SCALE)
+
             last_face = frame[y:y+h, x:x+w]
+
+            progress = min(100, int((stable_frames / REQUIRED_STABLE) * 100))
 
             cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 255, 255), 2)
             cv2.putText(
                 frame,
-                f"Checking... {int((stable_frames/REQUIRED_STABLE)*100)}%",
+                f"Stabilizing... {progress}%",
                 (x, y - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -66,17 +101,18 @@ def checkin():
             )
         else:
             stable_frames = 0
-            last_face = None
+            scores_buffer.clear()
+            last_bbox = None
 
         cv2.imshow("AeroFace - Lounge Check-In", frame)
 
-        # AUTO CHECK-IN
+        # ---------- MATCH ONCE ----------
         if stable_frames >= REQUIRED_STABLE and last_face is not None:
-            print("🔍 Generating live embedding...")
-            live_embedding = generate_embedding(last_face)
+            print("🔍 Generating embedding...", flush=True)
 
+            live_embedding = generate_embedding(last_face)
             if live_embedding is None:
-                print("❌ Failed to generate live embedding")
+                print("❌ Embedding failed", flush=True)
                 break
 
             best_score = -1
@@ -84,40 +120,47 @@ def checkin():
 
             for user_id, stored_embedding in users.items():
                 score = cosine_similarity(live_embedding, stored_embedding)
-
                 if score > best_score:
                     best_score = score
                     best_user = user_id
 
-            print(f"🔍 Best match: {best_user} ({best_score:.3f})")
+            scores_buffer.append(best_score)
 
-            if best_score >= THRESHOLD:
+            if len(scores_buffer) < MATCH_FRAMES:
+                continue
+
+            final_score = sum(scores_buffer) / len(scores_buffer)
+            confidence = int(final_score * 100)
+
+            if final_score >= THRESHOLD:
                 color = (0, 255, 0)
-                text = f"ACCESS GRANTED : {best_user}"
-                print("🟢 ACCESS GRANTED")
+                text = f"ACCESS GRANTED : {best_user} ({confidence}%)"
+                print(f"🟢 ACCESS GRANTED → {best_user} ({final_score:.3f})", flush=True)
             else:
                 color = (0, 0, 255)
-                text = "ACCESS DENIED"
-                print("🔴 ACCESS DENIED")
+                text = f"ACCESS DENIED ({confidence}%)"
+                print(f"🔴 ACCESS DENIED ({final_score:.3f})", flush=True)
 
             cv2.rectangle(frame, (x, y), (x+w, y+h), color, 4)
             cv2.putText(
                 frame,
                 text,
-                (x, y - 20),
+                (x, y - 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.9,
                 color,
                 2
             )
 
-            cv2.imshow("AeroFace - Result", frame)
+            # Display result in same window
+            cv2.imshow("AeroFace - Lounge Check-In", frame)
             cv2.waitKey(3000)
             break
 
         # ESC to exit
-        if cv2.waitKey(1) == 27:
-            print("❌ Check-in cancelled")
+        key = cv2.waitKey(1) & 0xFF
+        if key == 27:
+            print("❌ Check-in cancelled", flush=True)
             break
 
     cap.release()
