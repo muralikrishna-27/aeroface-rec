@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 
 from face.embedding import generate_embedding
-from db.store_embedding import fetch_all_embeddings, log_checkin
+from db.store_embedding import fetch_all_embeddings, log_checkout, get_current_status
 
 # ---------------- CONFIG ----------------
 THRESHOLD = 0.78
@@ -13,14 +13,14 @@ DETECT_EVERY_N_FRAMES = 5
 RESIZE_SCALE = 0.5
 # ---------------------------------------
 
-print("🔥 CHECKIN FILE LOADED 🔥", flush=True)
+print("🔥 CHECKOUT FILE LOADED 🔥", flush=True)
 
 
 def cosine_similarity(a, b):
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def checkin():
+def checkout():
     # ---------- LOAD USERS ----------
     users = fetch_all_embeddings()
     if not users:
@@ -37,7 +37,7 @@ def checkin():
 
     print("📸 Camera opened", flush=True)
 
-    cv2.namedWindow("AeroFace - Lounge Check-In", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("AeroFace - Lounge Check-Out", cv2.WINDOW_NORMAL)
 
     face_cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -105,7 +105,7 @@ def checkin():
             scores_buffer.clear()
             last_bbox = None
 
-        cv2.imshow("AeroFace - Lounge Check-In", frame)
+        cv2.imshow("AeroFace - Lounge Check-Out", frame)
 
         # ---------- MATCH ONCE ----------
         if stable_frames >= REQUIRED_STABLE and last_face is not None:
@@ -136,17 +136,19 @@ def checkin():
             if final_score >= THRESHOLD:
                 color = (0, 255, 0)
                 current_time = datetime.now().strftime("%H:%M:%S")
-                print(f"🟢 ACCESS GRANTED → {best_user} ({final_score:.3f}) at {current_time}", flush=True)
+                status, checkin_time = get_current_status(best_user)
                 
-                # Log checkin to database
-                log_checkin(best_user)
+                print(f"🔵 CHECKOUT PROCESSED → {best_user} ({final_score:.3f}) at {current_time}", flush=True)
+                
+                # Log checkout to database
+                log_checkout(best_user)
                 
                 cv2.rectangle(frame, (x, y), (x+w, y+h), color, 4)
                 
-                # Large "ACCESS GRANTED" text
+                # Large "CHECK OUT" text
                 cv2.putText(
                     frame,
-                    "ACCESS GRANTED",
+                    "CHECK OUT",
                     (x, y - 60),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1.2,
@@ -165,10 +167,10 @@ def checkin():
                     1
                 )
                 
-                # Checkin time text
+                # Checkout time text
                 cv2.putText(
                     frame,
-                    f"Checked in: {current_time}",
+                    f"Checked out: {current_time}",
                     (x, y - 10),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.4,
@@ -182,14 +184,14 @@ def checkin():
                 cv2.rectangle(frame, (x, y), (x+w, y+h), color, 4)
 
             # Display result in same window
-            cv2.imshow("AeroFace - Lounge Check-In", frame)
+            cv2.imshow("AeroFace - Lounge Check-Out", frame)
             cv2.waitKey(3000)
             break
 
         # ESC to exit
         key = cv2.waitKey(1) & 0xFF
         if key == 27:
-            print("❌ Check-in cancelled", flush=True)
+            print("❌ Check-out cancelled", flush=True)
             break
 
     cap.release()
@@ -197,4 +199,4 @@ def checkin():
 
 
 if __name__ == "__main__":
-    checkin()
+    checkout()

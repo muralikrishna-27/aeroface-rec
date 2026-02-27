@@ -143,3 +143,119 @@ if __name__ == "__main__":
         test_conn.close()
     else:
         print("❌ Connection failed")
+
+
+def log_checkin(user_id):
+    """
+    Log checkin time for a user
+    
+    Args:
+        user_id: User identifier
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    conn = get_connection()
+    if conn is None:
+        return False
+    
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO attendance_log (user_id, checkin_time)
+            VALUES (%s, NOW())
+            """,
+            (user_id,)
+        )
+        conn.commit()
+        cur.close()
+        return True
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"❌ Database error logging checkin: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def log_checkout(user_id):
+    """
+    Log checkout time for user's latest checkin
+    
+    Args:
+        user_id: User identifier
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    conn = get_connection()
+    if conn is None:
+        return False
+    
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE attendance_log 
+            SET checkout_time = NOW()
+            WHERE id = (
+                SELECT id FROM attendance_log 
+                WHERE user_id = %s AND checkout_time IS NULL
+                ORDER BY checkin_time DESC
+                LIMIT 1
+            )
+            """,
+            (user_id,)
+        )
+        conn.commit()
+        cur.close()
+        return True
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"❌ Database error logging checkout: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_current_status(user_id):
+    """
+    Get current checkin/checkout status for user
+    
+    Returns:
+        status (str): "checked_in" or "checked_out"
+        checkin_time (str): ISO format time or None
+    """
+    conn = get_connection()
+    if conn is None:
+        return "unknown", None
+    
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT checkin_time, checkout_time 
+            FROM attendance_log 
+            WHERE user_id = %s
+            ORDER BY checkin_time DESC 
+            LIMIT 1
+            """,
+            (user_id,)
+        )
+        row = cur.fetchone()
+        cur.close()
+        
+        if row:
+            checkin_time, checkout_time = row
+            if checkout_time is None:
+                return "checked_in", str(checkin_time)
+            else:
+                return "checked_out", str(checkout_time)
+        return "never", None
+    
+    except psycopg2.Error as e:
+        print(f"❌ Database error: {e}")
+        return "unknown", None
+    finally:
+        conn.close()
