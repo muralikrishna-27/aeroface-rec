@@ -14,6 +14,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from face.register_face import register_face
 from face.checkin import checkin
+from face.checkout import checkout
 from face.detector import detect_face
 
 
@@ -44,8 +45,9 @@ def print_menu():
     print("="*50)
     print("[1] 📝 Register New Face")
     print("[2] 🟢 Check-in (Access Control)")
-    print("[3] 🧪 Test Face Detection")
-    print("[4] ❌ Exit")
+    print("[3] 🔵 Check-out (Log Exit)")
+    print("[4] 🧪 Test Face Detection")
+    print("[5] ❌ Exit")
     print("="*50)
 
 
@@ -61,7 +63,7 @@ def main():
     
     while True:
         print_menu()
-        choice = input("\nEnter your choice (1-4): ").strip()
+        choice = input("\nEnter your choice (1-5): ").strip()
         
         if choice == "1":
             # Registration
@@ -108,6 +110,26 @@ def main():
             input("\nPress ENTER to continue...")
         
         elif choice == "3":
+            # Check-out
+            print("\n" + "-"*50)
+            print("🔵 LOUNGE CHECK-OUT")
+            print("-"*50)
+            print("✅ Starting check-out process")
+            print("📸 Look at the camera for face recognition")
+            print("🎯 Hold still to get stabilization")
+            print("⌨️  Press ESC to cancel\n")
+            
+            try:
+                checkout()
+                print("✅ Check-out completed!")
+            except KeyboardInterrupt:
+                print("\n❌ Check-out cancelled by user")
+            except Exception as e:
+                print(f"\n❌ Check-out failed: {e}")
+            
+            input("\nPress ENTER to continue...")
+        
+        elif choice == "4":
             # Face Detection Test
             print("\n" + "-"*50)
             print("🧪 FACE DETECTION TEST")
@@ -124,13 +146,13 @@ def main():
             
             input("\nPress ENTER to continue...")
         
-        elif choice == "4":
+        elif choice == "5":
             # Exit
             print("\n👋 Thank you for using AeroFace!")
             sys.exit(0)
         
         else:
-            print("❌ Invalid choice. Please enter 1-4")
+            print("❌ Invalid choice. Please enter 1-5")
 
 
 if __name__ == "__main__":
