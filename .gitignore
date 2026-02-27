@@ -26,3 +26,9 @@ data/embeddings/
 
 # Models / caches
 .deepface/
+
+.env
+venv/
+__pycache__/
+data/
+*.npy
