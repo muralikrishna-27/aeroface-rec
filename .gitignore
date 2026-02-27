@@ -1,0 +1,28 @@
+```gitignore
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Local data
+data/registered/
+data/embeddings/
+
+# Logs
+*.log
+
+# Models / caches
+.deepface/
