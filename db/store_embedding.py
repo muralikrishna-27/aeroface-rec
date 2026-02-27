@@ -2,10 +2,10 @@ import psycopg2
 import numpy as np
 
 DB_CONFIG = {
-    "host": "aws-1-ap-southeast-2.pooler.supabase.com",
+    "host": "HOST_NAMER",
     "dbname": "postgres",
-    "user": "postgres.cjfbxxlgoerqqniriyxb",
-    "password": "Murali#2707@",
+    "user": "USER_NAME",
+    "password": "PASS",
     "port": 5432,
     "sslmode": "require"
 }
