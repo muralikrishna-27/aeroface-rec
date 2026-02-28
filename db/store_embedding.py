@@ -32,13 +32,14 @@ def get_connection():
         return None
 
 
-def store_embedding(user_id, embedding):
+def store_embedding(user_id, embedding, lounge_id=None):
     """
     Store face embedding in database with error handling
     
     Args:
-        user_id: Unique user identifier
+        user_id: Unique user identifier (Supabase auth UUID)
         embedding: 512D numpy array (ArcFace)
+        lounge_id: Optional lounge UUID to map the embedding to
     
     Returns:
         True if successful, False otherwise
@@ -56,12 +57,13 @@ def store_embedding(user_id, embedding):
         
         cur.execute(
             """
-            INSERT INTO face_embeddings (user_id, embedding, model_name)
-            VALUES (%s, %s, %s)
+            INSERT INTO face_embeddings (user_id, embedding, model_name, lounge_id)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id)
-            DO UPDATE SET embedding = EXCLUDED.embedding, updated_at = NOW()
+            DO UPDATE SET embedding = EXCLUDED.embedding,
+                         lounge_id = COALESCE(EXCLUDED.lounge_id, face_embeddings.lounge_id)
             """,
-            (user_id, embedding.tolist(), "ArcFace")
+            (user_id, embedding.tolist(), "Facenet512", lounge_id)
         )
         
         conn.commit()
@@ -143,6 +145,74 @@ if __name__ == "__main__":
         test_conn.close()
     else:
         print("❌ Connection failed")
+
+
+def get_embedding_status(user_id):
+    """
+    Check if a user has a registered face embedding.
+    
+    Returns:
+        dict with model_name, lounge_id, created_at, updated_at if found
+        None if not found
+    """
+    conn = get_connection()
+    if conn is None:
+        return None
+    
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT model_name, lounge_id, created_at, updated_at
+            FROM face_embeddings
+            WHERE user_id = %s
+            """,
+            (user_id,)
+        )
+        row = cur.fetchone()
+        cur.close()
+        
+        if row:
+            return {
+                "model_name": row[0],
+                "lounge_id": str(row[1]) if row[1] else None,
+                "created_at": str(row[2]) if row[2] else None,
+                "updated_at": str(row[3]) if row[3] else None,
+            }
+        return None
+    except psycopg2.Error as e:
+        print(f"❌ Database error: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def delete_embedding(user_id):
+    """
+    Delete a user's face embedding (for re-registration).
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    conn = get_connection()
+    if conn is None:
+        return False
+    
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM face_embeddings WHERE user_id = %s",
+            (user_id,)
+        )
+        conn.commit()
+        cur.close()
+        return True
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"❌ Database error: {e}")
+        return False
+    finally:
+        conn.close()
 
 
 def log_checkin(user_id):

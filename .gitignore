@@ -23,7 +23,7 @@ data/embeddings/
 
 # Logs
 *.log
-
+.env*
 # Models / caches
 .deepface/
 
